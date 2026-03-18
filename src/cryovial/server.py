@@ -8,6 +8,7 @@ Uses Python stdlib http.server — no framework dependencies.
 
 import json
 import logging
+import time
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -16,12 +17,15 @@ from .deploy import DeployRecord, ServiceConfig, deploy
 
 log = logging.getLogger(__name__)
 
+COOLDOWN_SECONDS = 300  # 5 minutes
+
 
 class _ConfiguredHTTPServer(HTTPServer):
     """HTTPServer that holds webhook configuration for handler access."""
 
     services: dict[str, ServiceConfig]
     secret: str
+    last_deploy: dict[str, float]  # stack_name -> monotonic timestamp
 
 
 class _WebhookHandler(BaseHTTPRequestHandler):
@@ -54,6 +58,29 @@ class _WebhookHandler(BaseHTTPRequestHandler):
         if service_config is None:
             self._error(HTTPStatus.NOT_FOUND, f"unknown service: {service_name}")
             return
+
+        stack = service_config.stack_name
+        now = time.monotonic()
+        last = self.server.last_deploy.get(stack, 0.0)
+        elapsed = now - last
+        if last > 0 and elapsed < COOLDOWN_SECONDS:
+            remaining = int(COOLDOWN_SECONDS - elapsed)
+            log.warning(
+                "Cooldown active: service=%s stack=%s retry_after=%ds",
+                service_name,
+                stack,
+                remaining,
+            )
+            self.send_response(HTTPStatus.TOO_MANY_REQUESTS)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Retry-After", str(remaining))
+            body = json.dumps({"error": "cooldown active", "retry_after": remaining}).encode()
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        self.server.last_deploy[stack] = now
 
         image = payload.get("image", "")
         log.info("Accepted deploy notification: service=%s image=%s", service_name, image or "not specified")
@@ -135,6 +162,7 @@ class WebhookServer:
         self._httpd = _ConfiguredHTTPServer(("0.0.0.0", port), _WebhookHandler)
         self._httpd.services = services
         self._httpd.secret = secret
+        self._httpd.last_deploy = {}
         self.port = self._httpd.server_address[1]
 
     def run(self) -> None:
