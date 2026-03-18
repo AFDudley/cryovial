@@ -12,7 +12,7 @@ import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from .deploy import ServiceConfig, deploy
+from .deploy import DeployRecord, ServiceConfig, deploy
 
 log = logging.getLogger(__name__)
 
@@ -58,14 +58,17 @@ class _WebhookHandler(BaseHTTPRequestHandler):
         image = payload.get("image", "")
         log.info("Accepted deploy notification: service=%s image=%s", service_name, image or "not specified")
 
+        record = DeployRecord(service=service_name, image=image)
+        record.save()
+
         thread = threading.Thread(
             target=self._run_deploy,
-            args=(service_config, image or None),
+            args=(service_config, image or None, record),
             daemon=True,
         )
         thread.start()
 
-        self._respond(HTTPStatus.ACCEPTED, {"status": "accepted"})
+        self._respond(HTTPStatus.ACCEPTED, {"status": "accepted", "deploy_id": record.id})
 
     def do_GET(self) -> None:
         self._error(HTTPStatus.METHOD_NOT_ALLOWED, "use POST")
@@ -90,12 +93,19 @@ class _WebhookHandler(BaseHTTPRequestHandler):
             return None
         return data
 
-    def _run_deploy(self, service_config: ServiceConfig, image: str | None) -> None:
+    def _run_deploy(
+        self,
+        service_config: ServiceConfig,
+        image: str | None,
+        record: DeployRecord,
+    ) -> None:
         try:
             deploy(service_config, image=image)
-            log.info("Deploy completed: service=%s", service_config.name)
-        except Exception:
-            log.exception("Deploy failed: service=%s", service_config.name)
+            record.complete()
+            log.info("Deploy completed: service=%s id=%s", service_config.name, record.id)
+        except Exception as exc:
+            record.fail(error=str(exc))
+            log.exception("Deploy failed: service=%s id=%s", service_config.name, record.id)
 
     def _respond(self, status: HTTPStatus, body: dict) -> None:
         self.send_response(status)

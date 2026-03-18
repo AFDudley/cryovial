@@ -3,13 +3,23 @@
 When a SHA-tagged image is provided, restarts the deployment with
 that specific image via laconic-so --image flag. Falls back to a
 plain laconic-so deployment restart when no image is specified.
+
+Deploy records are written to ~/.cryovial/deploys/ as YAML files,
+tracking accept/complete/fail status with timestamps.
 """
 
 import logging
 import subprocess
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+
+import yaml
 
 log = logging.getLogger(__name__)
+
+DEPLOYS_DIR = Path.home() / ".cryovial" / "deploys"
 
 
 @dataclass
@@ -25,6 +35,59 @@ class ServiceConfig:
     name: str
     stack_name: str
     repo_dir: str
+
+
+def _short_id() -> str:
+    """Generate a short deploy ID (first 8 chars of uuid4)."""
+    return uuid.uuid4().hex[:8]
+
+
+def _now() -> str:
+    return datetime.now(tz=timezone.utc).isoformat()
+
+
+@dataclass
+class DeployRecord:
+    """Record of a deploy attempt, persisted as YAML.
+
+    Written on accept, updated on completion or failure.
+    """
+
+    id: str = field(default_factory=_short_id)
+    service: str = ""
+    image: str = ""
+    status: str = "accepted"
+    accepted_at: str = field(default_factory=_now)
+    completed_at: str = ""
+    error: str = ""
+
+    def _path(self) -> Path:
+        return DEPLOYS_DIR / f"{self.id}.yml"
+
+    def save(self) -> None:
+        """Write record to ~/.cryovial/deploys/<id>.yml."""
+        DEPLOYS_DIR.mkdir(parents=True, exist_ok=True)
+        data = {
+            "id": self.id,
+            "service": self.service,
+            "image": self.image,
+            "status": self.status,
+            "accepted_at": self.accepted_at,
+            "completed_at": self.completed_at,
+            "error": self.error,
+        }
+        self._path().write_text(yaml.dump(data, default_flow_style=False))
+
+    def complete(self) -> None:
+        self.status = "completed"
+        self.completed_at = _now()
+        self.save()
+
+    def fail(self, error: str) -> None:
+        self.status = "failed"
+        self.completed_at = _now()
+        self.error = error
+        self.save()
 
 
 def deploy(service_config: ServiceConfig, image: str | None = None) -> None:
