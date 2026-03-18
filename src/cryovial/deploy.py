@@ -34,6 +34,10 @@ def deploy(service_config: ServiceConfig) -> None:
 
     log = logging.getLogger(__name__)
 
+    import os
+
+    log.info("cwd=%s GIT_SSH_COMMAND=%s", service_config.repo_dir, os.environ.get("GIT_SSH_COMMAND", "<unset>"))
+
     result = subprocess.run(
         [
             "laconic-so",
