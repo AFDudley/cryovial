@@ -55,7 +55,8 @@ class _WebhookHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, f"unknown service: {service_name}")
             return
 
-        log.info("Accepted deploy notification: service=%s", service_name)
+        image = payload.get("image", "")
+        log.info("Accepted deploy notification: service=%s image=%s", service_name, image or "not specified")
 
         thread = threading.Thread(
             target=self._run_deploy,
