@@ -1,0 +1,21 @@
+# laconic-so stack definition for the cryovial container.
+#
+# Deploy with:
+#   laconic-so --stack /path/to/stacks/cryovial deploy init
+#   laconic-so --stack /path/to/stacks/cryovial deploy create
+#   laconic-so --stack /path/to/stacks/cryovial deploy start
+
+version: "1.0"
+name: cryovial
+description: >
+  Cryovial — the exophial agent gateway container for read-only
+  k8s observability, image watching, and coord.git state management.
+
+repos:
+  - github.com/cerc-io/exophial
+
+containers:
+  - laconic/cryovial
+
+pods:
+  - cryovial

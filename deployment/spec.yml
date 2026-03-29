@@ -1,0 +1,104 @@
+# Deployment specification for cryovial stack.
+#
+# Deployed via laconic-so into the kind cluster on woodburn.
+# GitOps-tracked: changes to this file trigger redeployment.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: laconic-cryovial
+  labels:
+    app: cryovial
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cryovial-data
+  namespace: laconic-cryovial
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cryovial
+  namespace: laconic-cryovial
+  labels:
+    app: cryovial
+spec:
+  type: ClusterIP
+  selector:
+    app: cryovial
+  ports:
+    - port: 22
+      targetPort: 22
+      name: ssh
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cryovial
+  namespace: laconic-cryovial
+  labels:
+    app: cryovial
+    component: coordination
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cryovial
+  template:
+    metadata:
+      labels:
+        app: cryovial
+        component: coordination
+    spec:
+      serviceAccountName: cryovial
+      containers:
+        - name: cryovial
+          image: laconic/cryovial:local
+          ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: cryovial-config
+          volumeMounts:
+            - name: coord-data
+              mountPath: /home/exophial/coord.git
+            - name: ssh-keys
+              mountPath: /home/exophial/.ssh
+              readOnly: true
+          livenessProbe:
+            exec:
+              command: ["pgrep", "-f", "sshd"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 22
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: coord-data
+          persistentVolumeClaim:
+            claimName: cryovial-data
+        - name: ssh-keys
+          secret:
+            secretName: cryovial-ssh-keys
+            defaultMode: 0600
