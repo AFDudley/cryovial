@@ -10,9 +10,10 @@ tracking accept/complete/fail status with timestamps.
 
 import logging
 import subprocess
+import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -43,7 +44,7 @@ def _short_id() -> str:
 
 
 def _now() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()
 
 
 @dataclass
@@ -94,6 +95,48 @@ class DeployRecord:
         self.save()
 
 
+class NamespaceTerminatingError(RuntimeError):
+    """Raised when a namespace is still Terminating after timeout."""
+
+
+NAMESPACE_POLL_INTERVAL = 5
+NAMESPACE_WAIT_TIMEOUT = 120
+
+
+def _wait_for_namespace(namespace: str) -> None:
+    """Block until the namespace is no longer Terminating.
+
+    If the namespace is Active or does not exist, returns immediately.
+    Polls every 5 seconds up to 120 seconds. Raises
+    NamespaceTerminatingError if still Terminating after timeout.
+    """
+    start = time.monotonic()
+    while True:
+        result = subprocess.run(
+            ["kubectl", "get", "namespace", namespace, "-o", "jsonpath={.status.phase}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        # Namespace doesn't exist (already gone) or is Active — proceed
+        if result.returncode != 0 or result.stdout.strip() != "Terminating":
+            return
+
+        elapsed = time.monotonic() - start
+        if elapsed >= NAMESPACE_WAIT_TIMEOUT:
+            raise NamespaceTerminatingError(
+                f"Namespace {namespace} still Terminating after {NAMESPACE_WAIT_TIMEOUT}s"
+            )
+
+        log.info(
+            "Namespace %s is Terminating, waiting %ds (%.0fs elapsed)",
+            namespace,
+            NAMESPACE_POLL_INTERVAL,
+            elapsed,
+        )
+        time.sleep(NAMESPACE_POLL_INTERVAL)
+
+
 def deploy(
     service_config: ServiceConfig,
     image: str | None = None,
@@ -107,7 +150,13 @@ def deploy(
 
     When record is provided, stdout/stderr from the subprocess are
     captured into the record fields for audit and debugging.
+
+    Waits for namespace to finish Terminating before proceeding,
+    to avoid race conditions with kubernetes resource creation.
     """
+    # Wait for any Terminating namespace to clear before restarting
+    _wait_for_namespace(service_config.stack_name)
+
     cmd = [
         "laconic-so",
         "deployment",
