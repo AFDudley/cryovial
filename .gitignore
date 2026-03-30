@@ -1,0 +1,7 @@
+.worktrees
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.pebbles/pebbles.db

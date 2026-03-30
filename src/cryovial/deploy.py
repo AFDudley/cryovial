@@ -10,7 +10,6 @@ tracking accept/complete/fail status with timestamps.
 
 import logging
 import subprocess
-import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -99,42 +98,33 @@ class NamespaceTerminatingError(RuntimeError):
     """Raised when a namespace is still Terminating after timeout."""
 
 
-NAMESPACE_POLL_INTERVAL = 5
 NAMESPACE_WAIT_TIMEOUT = 120
 
 
 def _wait_for_namespace(namespace: str) -> None:
-    """Block until the namespace is no longer Terminating.
+    """Block until the namespace is deleted or not Terminating.
 
-    If the namespace is Active or does not exist, returns immediately.
-    Polls every 5 seconds up to 120 seconds. Raises
-    NamespaceTerminatingError if still Terminating after timeout.
+    Delegates polling to ``kubectl wait --for=delete``. If the
+    namespace does not exist, kubectl returns immediately. If it
+    is still present after the timeout, raises NamespaceTerminatingError.
     """
-    start = time.monotonic()
-    while True:
-        result = subprocess.run(
-            ["kubectl", "get", "namespace", namespace, "-o", "jsonpath={.status.phase}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        # Namespace doesn't exist (already gone) or is Active — proceed
-        if result.returncode != 0 or result.stdout.strip() != "Terminating":
-            return
-
-        elapsed = time.monotonic() - start
-        if elapsed >= NAMESPACE_WAIT_TIMEOUT:
-            raise NamespaceTerminatingError(
-                f"Namespace {namespace} still Terminating after {NAMESPACE_WAIT_TIMEOUT}s"
-            )
-
-        log.info(
-            "Namespace %s is Terminating, waiting %ds (%.0fs elapsed)",
+    result = subprocess.run(
+        [
+            "kubectl",
+            "wait",
+            "--for=delete",
+            "namespace",
             namespace,
-            NAMESPACE_POLL_INTERVAL,
-            elapsed,
+            f"--timeout={NAMESPACE_WAIT_TIMEOUT}s",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 and "Terminating" in result.stderr:
+        raise NamespaceTerminatingError(
+            f"Namespace {namespace} still Terminating after {NAMESPACE_WAIT_TIMEOUT}s"
         )
-        time.sleep(NAMESPACE_POLL_INTERVAL)
 
 
 def deploy(

@@ -28,9 +28,13 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command")
 
     serve_parser = subparsers.add_parser("serve", help="Start webhook server")
-    serve_parser.add_argument("--config", default=None, help="Path to YAML services config (or CRYOVIAL_CONFIG env var)")
+    serve_parser.add_argument(
+        "--config", default=None, help="Path to YAML services config (or CRYOVIAL_CONFIG env var)"
+    )
     serve_parser.add_argument("--port", type=int, default=8090, help="Port (default: 8090)")
-    serve_parser.add_argument("--secret", default=None, help="Bearer token for auth (or CRYOVIAL_SECRET env var)")
+    serve_parser.add_argument(
+        "--secret", default=None, help="Bearer token for auth (or CRYOVIAL_SECRET env var)"
+    )
 
     subparsers.add_parser("self-update", help="Update cryovial to latest version")
 
