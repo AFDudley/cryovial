@@ -1,0 +1,15 @@
+[Unit]
+Description=Cryovial deploy webhook server
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User={{ cryovial_service_user }}
+EnvironmentFile=/etc/cryovial/env
+ExecStart={{ cryovial_service_user_home }}/.local/bin/cryovial serve --port {{ cryovial_service_port }}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

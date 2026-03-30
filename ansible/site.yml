@@ -30,3 +30,11 @@
       tags: [prerequisites]
     - role: cryovial
       tags: [cryovial]
+
+- name: Deploy cryovial as a systemd service
+  hosts: all
+  gather_facts: true
+  tags: [cryovial_service]
+
+  roles:
+    - role: cryovial_service

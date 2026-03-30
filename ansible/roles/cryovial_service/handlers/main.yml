@@ -1,0 +1,11 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Restart cryovial
+  ansible.builtin.systemd:
+    name: cryovial
+    state: restarted
+  become: true

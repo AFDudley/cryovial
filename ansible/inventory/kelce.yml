@@ -1,0 +1,13 @@
+---
+all:
+  hosts:
+    kelce:
+      ansible_host: kelce
+      cryovial_service_user: rix
+      cryovial_service_user_home: /home/rix
+      cryovial_service_secret: "test-secret-for-kelce"
+      cryovial_service_port: 8090
+      cryovial_service_services:
+        test-svc:
+          stack_name: /tmp/test-stack
+          repo_dir: /tmp
