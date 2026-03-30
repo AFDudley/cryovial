@@ -129,11 +129,16 @@ class _WebhookHandler(BaseHTTPRequestHandler):
         record: DeployRecord,
     ) -> None:
         try:
-            deploy(service_config, image=image)
+            deploy(service_config, image=image, record=record)
             record.complete()
             log.info("Deploy completed: service=%s id=%s", service_config.name, record.id)
         except Exception as exc:
-            record.fail(error=str(exc))
+            error_parts = [str(exc)]
+            if record.stdout:
+                error_parts.append(f"stdout: {record.stdout.strip()}")
+            if record.stderr:
+                error_parts.append(f"stderr: {record.stderr.strip()}")
+            record.fail(error="\n".join(error_parts))
             log.exception("Deploy failed: service=%s id=%s", service_config.name, record.id)
 
     def _respond(self, status: HTTPStatus, body: dict) -> None:
