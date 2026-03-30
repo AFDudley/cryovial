@@ -83,27 +83,12 @@
 
 - name: Install laconic-so
   block:
-    - name: Check if laconic-so is installed
-      command: laconic-so version
-      register: laconic_check
-      changed_when: false
-      failed_when: false
-
-    - name: Install Node.js (if needed for npm)
-      apt:
-        name: [nodejs, npm]
-        state: present
-        update_cache: true
+    - name: Download laconic-so {{ laconic_so_version }}
+      ansible.builtin.get_url:
+        url: "https://github.com/cerc-io/stack-orchestrator/releases/download/{{ laconic_so_version }}/laconic-so"
+        dest: /usr/local/bin/laconic-so
+        mode: "0755"
       become: true
-      when: laconic_check.rc != 0
-
-    - name: Install laconic-so via npm
-      npm:
-        name: "@cerc-io/laconic-so-cli"
-        global: true
-        state: "{{ 'latest' if laconic_so_version == 'latest' else 'present' }}"
-      become: true
-      when: laconic_check.rc != 0
 
 - name: Create kind cluster
   block:

@@ -18,7 +18,7 @@
     kubectl_version: "v1.31.4"
     kind_version: "v0.25.0"
     crane_version: "v0.20.3"
-    laconic_so_version: "latest"
+    laconic_so_version: "v1.1.0-b41e0cb-202602032258"
     cryovial_image: "ghcr.io/afdudley/cryovial:latest"
     cryovial_stack_dir: "/opt/stacks/cryovial"
     cryovial_ssh_pubkey: "{{ lookup('file', cryovial_ssh_pubkey_path) }}"
