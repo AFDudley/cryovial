@@ -5,98 +5,109 @@
 # at the expected version.
 
 - name: Install Docker
+  become: true
   block:
     - name: Check if Docker is installed
-      command: docker --version
-      register: docker_check
+      ansible.builtin.command: docker --version
+      register: prerequisites_docker_check
       changed_when: false
       failed_when: false
 
-    - name: Install Docker via convenience script
-      when: docker_check.rc != 0
-      shell: curl -fsSL https://get.docker.com | sh
-      args:
-        creates: /usr/bin/docker
+    - name: Download Docker install script
+      ansible.builtin.get_url:
+        url: https://get.docker.com
+        dest: /tmp/get-docker.sh
+        mode: "0755"
+      when: prerequisites_docker_check.rc != 0
+
+    - name: Run Docker install script
+      ansible.builtin.command: /tmp/get-docker.sh
+      when: prerequisites_docker_check.rc != 0
+      changed_when: true
 
     - name: Add user to docker group
-      user:
+      ansible.builtin.user:
         name: "{{ ansible_user }}"
         groups: docker
         append: true
 
     - name: Ensure Docker is running
-      systemd:
+      ansible.builtin.systemd:
         name: docker
         state: started
         enabled: true
-  become: true
 
 - name: Install kubectl
+  become: true
   block:
     - name: Check kubectl version
-      command: kubectl version --client -o yaml
-      register: kubectl_check
+      ansible.builtin.command: kubectl version --client -o yaml
+      register: prerequisites_kubectl_check
       changed_when: false
       failed_when: false
 
-    - name: Download kubectl {{ kubectl_version }}
-      get_url:
-        url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl"
+    - name: Download kubectl {{ prerequisites_kubectl_version }}
+      ansible.builtin.get_url:
+        url: "https://dl.k8s.io/release/{{ prerequisites_kubectl_version }}/bin/linux/amd64/kubectl"
         dest: /usr/local/bin/kubectl
         mode: "0755"
-      when: kubectl_check.rc != 0 or kubectl_version not in (kubectl_check.stdout | default(''))
-  become: true
+      when: >
+        prerequisites_kubectl_check.rc != 0 or
+        prerequisites_kubectl_version not in (prerequisites_kubectl_check.stdout | default(''))
 
 - name: Install kind
+  become: true
   block:
     - name: Check kind version
-      command: kind version
-      register: kind_check
+      ansible.builtin.command: kind version
+      register: prerequisites_kind_check
       changed_when: false
       failed_when: false
 
-    - name: Download kind {{ kind_version }}
-      get_url:
-        url: "https://kind.sigs.k8s.io/dl/{{ kind_version }}/kind-linux-amd64"
+    - name: Download kind {{ prerequisites_kind_version }}
+      ansible.builtin.get_url:
+        url: "https://kind.sigs.k8s.io/dl/{{ prerequisites_kind_version }}/kind-linux-amd64"
         dest: /usr/local/bin/kind
         mode: "0755"
-      when: kind_check.rc != 0 or kind_version not in (kind_check.stdout | default(''))
-  become: true
+      when: >
+        prerequisites_kind_check.rc != 0 or
+        prerequisites_kind_version not in (prerequisites_kind_check.stdout | default(''))
 
 - name: Install crane
+  become: true
   block:
     - name: Check if crane is installed
-      command: crane version
-      register: crane_check
+      ansible.builtin.command: crane version
+      register: prerequisites_crane_check
       changed_when: false
       failed_when: false
 
-    - name: Download and extract crane {{ crane_version }}
-      when: crane_check.rc != 0
-      unarchive:
-        src: "https://github.com/google/go-containerregistry/releases/download/{{ crane_version }}/go-containerregistry_Linux_x86_64.tar.gz"
+    - name: Download and extract crane {{ prerequisites_crane_version }}
+      ansible.builtin.unarchive:
+        src: "https://github.com/google/go-containerregistry/releases/download/{{ prerequisites_crane_version }}/go-containerregistry_Linux_x86_64.tar.gz"
         dest: /usr/local/bin
         remote_src: true
         include: [crane]
         mode: "0755"
-  become: true
+      when: prerequisites_crane_check.rc != 0
 
 - name: Install laconic-so
+  become: true
   block:
-    - name: Download laconic-so {{ laconic_so_version }}
+    - name: Download laconic-so {{ prerequisites_laconic_so_version }}
       ansible.builtin.get_url:
-        url: "https://github.com/cerc-io/stack-orchestrator/releases/download/{{ laconic_so_version }}/laconic-so"
+        url: "https://github.com/cerc-io/stack-orchestrator/releases/download/{{ prerequisites_laconic_so_version }}/laconic-so"
         dest: /usr/local/bin/laconic-so
         mode: "0755"
-      become: true
 
 - name: Create kind cluster
   block:
     - name: Check if kind cluster exists
-      command: "kind get clusters"
-      register: kind_clusters
+      ansible.builtin.command: kind get clusters
+      register: prerequisites_kind_clusters
       changed_when: false
 
-    - name: Create kind cluster {{ kind_cluster_name }}
-      command: "kind create cluster --name {{ kind_cluster_name }}"
-      when: kind_cluster_name not in kind_clusters.stdout_lines
+    - name: Create kind cluster {{ prerequisites_kind_cluster_name }}
+      ansible.builtin.command: "kind create cluster --name {{ prerequisites_kind_cluster_name }}"
+      when: prerequisites_kind_cluster_name not in prerequisites_kind_clusters.stdout_lines
+      changed_when: true
