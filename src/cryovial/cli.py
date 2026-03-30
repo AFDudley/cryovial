@@ -7,6 +7,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -27,9 +28,9 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command")
 
     serve_parser = subparsers.add_parser("serve", help="Start webhook server")
-    serve_parser.add_argument("--config", required=True, help="Path to YAML services config")
+    serve_parser.add_argument("--config", default=None, help="Path to YAML services config (or CRYOVIAL_CONFIG env var)")
     serve_parser.add_argument("--port", type=int, default=8090, help="Port (default: 8090)")
-    serve_parser.add_argument("--secret", required=True, help="Bearer token for auth")
+    serve_parser.add_argument("--secret", default=None, help="Bearer token for auth (or CRYOVIAL_SECRET env var)")
 
     subparsers.add_parser("self-update", help="Update cryovial to latest version")
 
@@ -55,7 +56,17 @@ def cmd_serve(args: argparse.Namespace) -> int:
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
     )
 
-    config_path = Path(args.config)
+    secret = args.secret or os.environ.get("CRYOVIAL_SECRET")
+    if not secret:
+        print("Error: --secret or CRYOVIAL_SECRET env var required", file=sys.stderr)
+        return 1
+
+    config = args.config or os.environ.get("CRYOVIAL_CONFIG")
+    if not config:
+        print("Error: --config or CRYOVIAL_CONFIG env var required", file=sys.stderr)
+        return 1
+
+    config_path = Path(config)
     if not config_path.exists():
         print(f"Config file not found: {config_path}", file=sys.stderr)
         return 1
@@ -83,7 +94,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
     server = WebhookServer(
         services=services,
-        secret=args.secret,
+        secret=secret,
         port=args.port,
     )
     server.run()
