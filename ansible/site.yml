@@ -1,0 +1,40 @@
+---
+# Deploy cryovial to a kind cluster.
+#
+# Usage:
+#   ansible-playbook -i <user>@<host>, ansible/site.yml
+#
+# Examples:
+#   ansible-playbook -i rix@woodburn.vaasl.io, ansible/site.yml
+#   ansible-playbook -i gor-deploy@woodburn.vaasl.io, ansible/site.yml --tags cryovial
+#
+# The trailing comma after the host is required for single-host inventory.
+
+- name: Bootstrap host and deploy cryovial
+  hosts: all
+  gather_facts: true
+
+  vars:
+    prerequisites_kubectl_version: "v1.31.4"
+    prerequisites_kind_version: "v0.25.0"
+    prerequisites_crane_version: "v0.20.3"
+    prerequisites_laconic_so_version: "v1.1.0-b41e0cb-202602032258"
+    prerequisites_kind_cluster_name: "kind"
+    cryovial_image: "ghcr.io/afdudley/cryovial:latest"
+    cryovial_stack_dir: "/opt/stacks/cryovial"
+    cryovial_ssh_pubkey: "{{ lookup('file', cryovial_ssh_pubkey_path) }}"
+    cryovial_ssh_pubkey_path: "~/.ssh/exophial_coord.pub"
+
+  roles:
+    - role: prerequisites
+      tags: [prerequisites]
+    - role: cryovial
+      tags: [cryovial]
+
+- name: Deploy cryovial as a systemd service
+  hosts: all
+  gather_facts: true
+  tags: [cryovial_service]
+
+  roles:
+    - role: cryovial_service

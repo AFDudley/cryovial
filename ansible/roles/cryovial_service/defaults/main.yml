@@ -1,0 +1,4 @@
+---
+cryovial_service_port: 8090
+cryovial_service_registry_token: ""
+cryovial_service_path_extra: ""

@@ -1,8 +1,8 @@
 # Cryovial
 
 Host-resident deploy service for container clusters. Receives webhook
-notifications from CI, triggers laconic-so deployment restarts. Pods
-pull new images from GHCR directly (imagePullPolicy: Always).
+notifications from CI, triggers laconic-so deployment restarts with
+SHA-tagged images for deterministic deploys.
 
 ## Architecture
 
@@ -10,24 +10,25 @@ pull new images from GHCR directly (imagePullPolicy: Always).
 GitHub Actions → POST /deploy/notify → cryovial → laconic-so restart → k8s pulls from GHCR
 ```
 
-Cryovial is an independent service, not part of exophial. It runs on the
-bare host (systemd) because it needs access to laconic-so, which manages
-the kind cluster. It does not run inside a container or k8s pod.
+Cryovial runs on the bare host (systemd) because it needs access to
+laconic-so, which manages the kind cluster. It does not run inside a
+container or k8s pod.
 
 ### What cryovial does
 
 1. Listens on port 8090 for POST /deploy/notify with Bearer auth
-2. Looks up the service name in services.yml to find the deployment dir
-3. Runs `laconic-so deployment --dir <dir> restart` from the repo dir
-4. laconic-so does git pull (to get latest spec), then restarts pods
-5. k8s pods pull the latest image from GHCR on restart
+2. Looks up the service name in `services.yml` to find the deployment dir
+3. When an `image` field is present, passes the SHA-tagged image to
+   `laconic-so deployment --dir <dir> restart --image <name>=<image>`
+4. Enforces a per-stack cooldown (429 for 5 minutes after a deploy)
+5. Persists deploy records as YAML in `~/.cryovial/deploys/`
+6. Returns 202 Accepted immediately; deploy runs in a background thread
 
 ### What cryovial does NOT do
 
-- No docker pull or kind load — pods pull from GHCR directly
-- No deploy records or rollback logic
-- No image watching or polling
+- No image watching or polling — CI pushes to cryovial, not the reverse
 - No k8s manifest manipulation — that's laconic-so's job
+- No rollback logic — deploy records exist for auditability, not recovery
 
 ## Deployment on woodburn
 
@@ -110,17 +111,26 @@ CI workflow step:
 Runs as gor-deploy. PATH includes `~/.local/bin` (cryovial) and
 `~/.venv/laconic-so/bin` (laconic-so). Restarts on failure.
 
+### Deploy records
+
+Each accepted deploy writes a YAML record to `~/.cryovial/deploys/<id>.yml`
+with fields: `id`, `service`, `image`, `status` (accepted/completed/failed),
+`accepted_at`, `completed_at`, `error`. Records are write-once artifacts
+for auditability.
+
 ### Known issues
+
+See `.pebbles/` for the current issue tracker.
 
 - **cv-a1a**: Must check for terminating namespace before restart.
   Rapid restarts fail if the previous namespace is still cleaning up.
 
 ## Related systems
 
-- **exophial** — development coordination (dispatcher, tasks, agents). Separate tool.
-- **pellicle** — host access control layer (future). Cryovial is the foundation
-  pellicle builds on. See `exophial/docs/v2.0.0/PELLICLE.md`.
 - **laconic-so** — cluster lifecycle management. Cryovial delegates all k8s
   operations to laconic-so.
 - **woodburn_deployer** — ansible playbooks for woodburn infrastructure.
   `deploy_cryovial.yml` installs and configures cryovial.
+- **exophial** — development coordination (dispatcher, tasks, agents).
+  Cryovial is operationally independent but architecturally part of the
+  exophial ecosystem. See `docs/ROADMAP.md` for the evolution plan.

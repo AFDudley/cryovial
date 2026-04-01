@@ -12,7 +12,7 @@ import logging
 import subprocess
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -43,7 +43,7 @@ def _short_id() -> str:
 
 
 def _now() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()
 
 
 @dataclass
@@ -60,6 +60,8 @@ class DeployRecord:
     accepted_at: str = field(default_factory=_now)
     completed_at: str = ""
     error: str = ""
+    stdout: str = ""
+    stderr: str = ""
 
     def _path(self) -> Path:
         return DEPLOYS_DIR / f"{self.id}.yml"
@@ -75,6 +77,8 @@ class DeployRecord:
             "accepted_at": self.accepted_at,
             "completed_at": self.completed_at,
             "error": self.error,
+            "stdout": self.stdout,
+            "stderr": self.stderr,
         }
         self._path().write_text(yaml.dump(data, default_flow_style=False))
 
@@ -90,13 +94,59 @@ class DeployRecord:
         self.save()
 
 
-def deploy(service_config: ServiceConfig, image: str | None = None) -> None:
+class NamespaceTerminatingError(RuntimeError):
+    """Raised when a namespace is still Terminating after timeout."""
+
+
+NAMESPACE_WAIT_TIMEOUT = 120
+
+
+def _wait_for_namespace(namespace: str) -> None:
+    """Block until the namespace is deleted or not Terminating.
+
+    Delegates polling to ``kubectl wait --for=delete``. If the
+    namespace does not exist, kubectl returns immediately. If it
+    is still present after the timeout, raises NamespaceTerminatingError.
+    """
+    result = subprocess.run(
+        [
+            "kubectl",
+            "wait",
+            "--for=delete",
+            "namespace",
+            namespace,
+            f"--timeout={NAMESPACE_WAIT_TIMEOUT}s",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 and "Terminating" in result.stderr:
+        raise NamespaceTerminatingError(
+            f"Namespace {namespace} still Terminating after {NAMESPACE_WAIT_TIMEOUT}s"
+        )
+
+
+def deploy(
+    service_config: ServiceConfig,
+    image: str | None = None,
+    record: DeployRecord | None = None,
+) -> None:
     """Deploy a service, optionally with a specific image tag.
 
     When image is provided, passes --image to laconic-so deployment
     restart so the container is updated to the exact SHA-tagged image
     from CI. When no image is provided, does a plain restart.
+
+    When record is provided, stdout/stderr from the subprocess are
+    captured into the record fields for audit and debugging.
+
+    Waits for namespace to finish Terminating before proceeding,
+    to avoid race conditions with kubernetes resource creation.
     """
+    # Wait for any Terminating namespace to clear before restarting
+    _wait_for_namespace(service_config.stack_name)
+
     cmd = [
         "laconic-so",
         "deployment",
@@ -117,6 +167,12 @@ def deploy(service_config: ServiceConfig, image: str | None = None) -> None:
         text=True,
         check=False,
     )
+
+    # Always capture output into the record for audit
+    if record is not None:
+        record.stdout = result.stdout
+        record.stderr = result.stderr
+
     if result.returncode != 0:
         log.error("Deploy failed (stdout): %s", result.stdout.strip())
         log.error("Deploy failed (stderr): %s", result.stderr.strip())

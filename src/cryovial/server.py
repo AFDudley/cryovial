@@ -8,10 +8,11 @@ Uses Python stdlib http.server — no framework dependencies.
 
 import json
 import logging
-import time
 import threading
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any
 
 from .deploy import DeployRecord, ServiceConfig, deploy
 
@@ -22,6 +23,8 @@ COOLDOWN_SECONDS = 300  # 5 minutes
 
 class _ConfiguredHTTPServer(HTTPServer):
     """HTTPServer that holds webhook configuration for handler access."""
+
+    allow_reuse_address = True
 
     services: dict[str, ServiceConfig]
     secret: str
@@ -35,7 +38,7 @@ class _WebhookHandler(BaseHTTPRequestHandler):
         {"service": "service-name"}
     """
 
-    server: _ConfiguredHTTPServer  # type: ignore[assignment]
+    server: _ConfiguredHTTPServer
 
     def do_POST(self) -> None:
         if self.path != "/deploy/notify":
@@ -83,7 +86,11 @@ class _WebhookHandler(BaseHTTPRequestHandler):
         self.server.last_deploy[stack] = now
 
         image = payload.get("image", "")
-        log.info("Accepted deploy notification: service=%s image=%s", service_name, image or "not specified")
+        log.info(
+            "Accepted deploy notification: service=%s image=%s",
+            service_name,
+            image or "not specified",
+        )
 
         record = DeployRecord(service=service_name, image=image)
         record.save()
@@ -107,7 +114,7 @@ class _WebhookHandler(BaseHTTPRequestHandler):
             return False
         return True
 
-    def _read_json(self) -> dict | None:
+    def _read_json(self) -> dict[str, Any] | None:
         content_length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(content_length)
         try:
@@ -127,14 +134,19 @@ class _WebhookHandler(BaseHTTPRequestHandler):
         record: DeployRecord,
     ) -> None:
         try:
-            deploy(service_config, image=image)
+            deploy(service_config, image=image, record=record)
             record.complete()
             log.info("Deploy completed: service=%s id=%s", service_config.name, record.id)
         except Exception as exc:
-            record.fail(error=str(exc))
+            error_parts = [str(exc)]
+            if record.stdout:
+                error_parts.append(f"stdout: {record.stdout.strip()}")
+            if record.stderr:
+                error_parts.append(f"stderr: {record.stderr.strip()}")
+            record.fail(error="\n".join(error_parts))
             log.exception("Deploy failed: service=%s id=%s", service_config.name, record.id)
 
-    def _respond(self, status: HTTPStatus, body: dict) -> None:
+    def _respond(self, status: HTTPStatus, body: dict[str, Any]) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         data = json.dumps(body).encode()

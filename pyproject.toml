@@ -11,15 +11,19 @@ dependencies = [
 [project.scripts]
 cryovial = "cryovial.cli:main"
 
+[dependency-groups]
+dev = [
+    "interrogate>=1.7",
+    "mypy>=1.15",
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "ruff>=0.9",
+    "types-PyYAML>=6.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.8",
-    "interrogate>=1.7",
-]
 
 [tool.ruff]
 target-version = "py311"
@@ -33,6 +37,7 @@ select = [
     "F",     # pyflakes
     "I",     # isort
     "N",     # pep8-naming
+    "UP",    # pyupgrade
     "D",     # pydocstyle
     "DOC",   # pydoclint (requires preview)
 ]
@@ -40,6 +45,26 @@ ignore = [
     "D203",  # incompatible with D211 (no-blank-line-before-class preferred)
     "D213",  # incompatible with D212 (multi-line-summary-first-line preferred)
 ]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["yaml"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_decorators = false
+disallow_untyped_defs = false
+ignore_missing_imports = true
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.interrogate]
 ignore-init-method = true

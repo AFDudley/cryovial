@@ -1,0 +1,75 @@
+# RBAC manifests for the cryovial ServiceAccount.
+#
+# Read-only access to cluster resources. No mutations allowed.
+# The cryovial container's kubectl commands are scoped to these permissions.
+# Even if an MCP tool tried to mutate, the ServiceAccount would reject it.
+#
+# Apply with: kubectl apply -f rbac.yml
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cryovial
+  namespace: laconic-cryovial
+  labels:
+    app: cryovial
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cryovial-readonly
+  labels:
+    app: cryovial
+rules:
+  # Pod observability: status, logs, describe
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+
+  # Service and ingress: routing status
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["get", "list", "watch"]
+
+  # Events: cluster activity
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+
+  # Storage: PV/PVC inspection
+  - apiGroups: [""]
+    resources: ["persistentvolumes", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+
+  # ConfigMaps: configuration inspection
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch"]
+
+  # Nodes: cluster health
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+
+  # Deployments: rollout status
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cryovial-readonly
+  labels:
+    app: cryovial
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cryovial-readonly
+subjects:
+  - kind: ServiceAccount
+    name: cryovial
+    namespace: laconic-cryovial

@@ -1,0 +1,36 @@
+# sshd configuration for the cryovial container.
+#
+# Key-based auth only. No passwords. No root login.
+# The exophial user connects from the dispatcher via SSH tunnel.
+
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+
+# Authentication: keys only
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AuthorizedKeysFile /home/exophial/.ssh/authorized_keys
+
+# Security hardening
+PermitEmptyPasswords no
+MaxAuthTries 3
+LoginGraceTime 30
+MaxSessions 5
+X11Forwarding no
+AllowTcpForwarding yes
+GatewayPorts no
+PrintMotd no
+UseDNS no
+
+# Keep connections alive (dispatcher runs long sessions)
+ClientAliveInterval 60
+ClientAliveCountMax 3
+
+# Restrict to exophial user only
+AllowUsers exophial
+
+# Logging
+LogLevel INFO
