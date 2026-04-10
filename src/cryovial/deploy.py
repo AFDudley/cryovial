@@ -289,7 +289,7 @@ def _deploy_artifact(
     log.info("Installed %s, restarting %s", binary_path, service_config.service_name)
 
     result = subprocess.run(
-        ["systemctl", "restart", service_config.service_name],
+        ["sudo", "systemctl", "restart", service_config.service_name],
         capture_output=True,
         text=True,
         check=False,
